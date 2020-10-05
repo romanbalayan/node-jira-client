@@ -1,5 +1,33 @@
-import request from 'request-promise';
+import got from 'got';
 import url from 'url';
+
+// extend got to handle authentication - as request
+const request = got.extend({
+  handlers: [
+    (options, next) => {
+      /* eslint no-param-reassign: ["error", { "props": false }] */
+      if (options.oauth) {
+        /* Not sure how to support oauth yet */
+      } else if (options.bearer) {
+        options.headers = {
+          ...options.headers,
+          Authorization: `Bearer ${options.bearer}`,
+        };
+        options.username = '';
+        options.password = '';
+      } else if (options.username || options.password) {
+        const auth = Buffer.from(`${options.username}:${options.password}`).toString('base64');
+        options.headers = {
+          ...options.headers,
+          Authorization: `Basic ${auth}`,
+        };
+        options.username = '';
+        options.password = '';
+      }
+      return next(options);
+    },
+  ],
+});
 
 /**
  * @name JiraApi
@@ -40,17 +68,10 @@ export default class JiraApi {
         signature_method: options.oauth.signature_method || 'RSA-SHA1',
       };
     } else if (options.bearer) {
-      this.baseOptions.auth = {
-        user: '',
-        pass: '',
-        sendImmediately: true,
-        bearer: options.bearer,
-      };
+      this.baseOptions.bearer = options.bearer;
     } else if (options.username && options.password) {
-      this.baseOptions.auth = {
-        user: options.username,
-        pass: options.password,
-      };
+      this.baseOptions.username = options.username;
+      this.baseOptions.password = options.password;
     }
 
     if (options.timeout) {
@@ -123,10 +144,13 @@ export default class JiraApi {
    */
   makeRequestHeader(uri, options = {}) {
     return {
-      rejectUnauthorized: this.strictSSL,
+      https: {
+        rejectUnauthorized: this.strictSSL,
+      },
       method: options.method || 'GET',
       uri,
-      json: true,
+      responseType: 'json',
+      resolveBodyOnly: true,
       ...options,
     };
   }
@@ -273,7 +297,7 @@ export default class JiraApi {
       ...requestOptions,
     };
 
-    const response = await this.request(options);
+    const response = await this.request(options.uri, options);
 
     if (response) {
       if (Array.isArray(response.errorMessages) && response.errorMessages.length > 0) {
@@ -319,7 +343,7 @@ export default class JiraApi {
       pathname: `/attachment/${attachment.id}/${attachment.filename}`,
       intermediatePath: '/secure',
       encode: true,
-    }), { json: false, encoding: null }));
+    }), { responseType: 'buffer', encoding: 'utf-8' }));
   }
 
   /**
@@ -365,7 +389,7 @@ export default class JiraApi {
       pathname: '/project/',
     }), {
       method: 'POST',
-      body: project,
+      json: project,
     }));
   }
 
@@ -440,7 +464,7 @@ export default class JiraApi {
     }), {
       method: 'PUT',
       followAllRedirects: true,
-      body: {
+      json: {
         issueKeys: [issueId],
       },
     }));
@@ -457,7 +481,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: link,
+      json: link,
     }));
   }
 
@@ -495,7 +519,7 @@ export default class JiraApi {
       pathname: `/issue/${issueNumber}/remotelink`,
     }), {
       method: 'POST',
-      body: remoteLink,
+      json: remoteLink,
     }));
   }
 
@@ -535,7 +559,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: version,
+      json: version,
     }));
   }
 
@@ -551,7 +575,7 @@ export default class JiraApi {
     }), {
       method: 'PUT',
       followAllRedirects: true,
-      body: version,
+      json: version,
     }));
   }
 
@@ -594,7 +618,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: position,
+      json: position,
     }));
   }
 
@@ -617,7 +641,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: {
+      json: {
         jql: searchString,
         ...optional,
       },
@@ -636,7 +660,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: user,
+      json: user,
     }));
   }
 
@@ -763,7 +787,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: issue,
+      json: issue,
     }));
   }
 
@@ -779,7 +803,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: username,
+      json: username,
     }));
   }
 
@@ -796,7 +820,7 @@ export default class JiraApi {
     }), {
       method: 'PUT',
       followAllRedirects: true,
-      body: { name: assigneeName },
+      json: { name: assigneeName },
     }));
   }
 
@@ -813,7 +837,7 @@ export default class JiraApi {
     }), {
       method: 'PUT',
       followAllRedirects: true,
-      body: { accountId: userId },
+      json: { accountId: userId },
     }));
   }
 
@@ -845,7 +869,7 @@ export default class JiraApi {
       pathname: `/issue/${issueId}`,
       query,
     }), {
-      body: issueUpdate,
+      json: issueUpdate,
       method: 'PUT',
       followAllRedirects: true,
     }));
@@ -875,7 +899,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: component,
+      json: component,
     }));
   }
 
@@ -892,7 +916,7 @@ export default class JiraApi {
     }), {
       method: 'PUT',
       followAllRedirects: true,
-      body: component,
+      json: component,
     }));
   }
 
@@ -938,7 +962,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: field,
+      json: field,
     }));
   }
 
@@ -966,7 +990,7 @@ export default class JiraApi {
     }), {
       method: 'POST',
       followAllRedirects: true,
-      body: option,
+      json: option,
     }));
   }
 
@@ -996,7 +1020,7 @@ export default class JiraApi {
     }), {
       method: 'PUT',
       followAllRedirects: true,
-      body: option,
+      json: option,
     }));
   }
 
@@ -1112,7 +1136,7 @@ export default class JiraApi {
     return this.doRequest(this.makeRequestHeader(this.makeUri({
       pathname: `/issue/${issueId}/transitions`,
     }), {
-      body: issueTransition,
+      json: issueTransition,
       method: 'POST',
       followAllRedirects: true,
     }));
@@ -1140,8 +1164,8 @@ export default class JiraApi {
     return this.doRequest(this.makeRequestHeader(this.makeUri({
       pathname: `/issue/${issueId}/comment`,
     }), {
-      body: {
-        body: comment,
+      json: {
+        json: comment,
       },
       method: 'POST',
       followAllRedirects: true,
@@ -1159,7 +1183,7 @@ export default class JiraApi {
     return this.doRequest(this.makeRequestHeader(this.makeUri({
       pathname: `/issue/${issueId}/comment`,
     }), {
-      body: comment,
+      json: comment,
       method: 'POST',
       followAllRedirects: true,
     }));
@@ -1178,8 +1202,8 @@ export default class JiraApi {
     return this.doRequest(this.makeRequestHeader(this.makeUri({
       pathname: `/issue/${issueId}/comment/${commentId}`,
     }), {
-      body: {
-        body: comment,
+      json: {
+        json: comment,
         ...options,
       },
       method: 'PUT',
@@ -1252,10 +1276,9 @@ export default class JiraApi {
         pathname: `/issue/${issueId}/worklog`,
         query,
       }),
-      body: worklog,
+      json: worklog,
       method: 'POST',
       'Content-Type': 'application/json',
-      json: true,
     };
 
     return this.doRequest(header);
@@ -1278,7 +1301,6 @@ export default class JiraApi {
       }),
       method: 'GET',
       'Content-Type': 'application/json',
-      json: true,
     };
 
     return this.doRequest(header);
@@ -1334,7 +1356,7 @@ export default class JiraApi {
         },
       }), {
         method: 'POST',
-        body: {
+        json: {
           ids: worklogsIDs,
         },
       },
@@ -1383,7 +1405,7 @@ export default class JiraApi {
       pathname: '/webhook',
     }), {
       method: 'POST',
-      body: webhook,
+      json: webhook,
     }));
   }
 
@@ -1482,7 +1504,7 @@ export default class JiraApi {
       pathname: `/issue/${issueId}/notify`,
     }), {
       method: 'POST',
-      body: notificationBody,
+      json: notificationBody,
     }));
   }
 
@@ -1558,7 +1580,7 @@ export default class JiraApi {
       pathname: '/backlog/issue',
     }), {
       method: 'POST',
-      body: {
+      json: {
         issues,
       },
     }));
@@ -1601,7 +1623,7 @@ export default class JiraApi {
       pathname: '/board',
     }), {
       method: 'POST',
-      body: boardBody,
+      json: boardBody,
     }));
   }
 
@@ -2035,7 +2057,7 @@ export default class JiraApi {
       pathname: `/epic/${epicIdOrKey}/issue`,
     }), {
       method: 'POST',
-      body: {
+      json: {
         issues,
       },
     }));
